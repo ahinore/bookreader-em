@@ -7,6 +7,7 @@ require 'systemu'
 require 'fileutils'
 require 'erb'
 require 'json'
+require 'escape'
 
 books_dir = "books/data"
 pdf_dir = "pdf"
@@ -21,15 +22,34 @@ Dir.glob("pdf/*.pdf").each_with_index{|pdf_path, i|
   
   book_dir = sprintf('%04d', i)
 
-  input_path = "#{pdf_path}[0-#{last_index}]"
-  output_path = "#{books_dir}/#{book_dir}/%04d.jpg"
-  FileUtils.mkdir_p(File.dirname(output_path))
+  output_dir = "#{books_dir}/#{book_dir}"
+  tmp_dir = "#{books_dir}/tmp"
 
-  #RMagicだと解像度の指定方法が分からないのでimagemagicのコマンドでjpgに変換
-  res = systemu("convert -density 600 -geometry 1000 #{input_path} #{output_path}")
-  if res[0].exitstatus != 0
-    STDERR.puts res[2]
-  end
+  FileUtils.mkdir_p(output_dir)
+  FileUtils.mkdir_p(tmp_dir)
+
+  #中間ファイルが大きすぎるので10ページ毎に処理
+  w = 10
+  0.step(last_index, w){|start|
+    last = start + w -1
+    last = last_index if last > last_index
+
+    input_path = "#{pdf_path}[#{start}-#{last}]"
+    tmp_path = "#{tmp_dir}/%04d.jpg"
+    
+    #RMagicだと解像度の指定方法が分からないのでimagemagicのコマンドでjpgに変換
+    puts "convert -density 600 -geometry 1000 #{input_path} #{tmp_path}"
+    res = systemu("convert -density 600 -geometry 1000 #{input_path} #{tmp_path}")
+    if res[0].exitstatus != 0
+      STDERR.puts res[2]
+    else
+      src_i = 0
+      start.upto(last){|dst_i|
+        FileUtils.mv("#{tmp_dir}/#{sprintf('%04d',src_i)+'.jpg'}", "#{output_dir}/#{sprintf('%04d',dst_i)+'.jpg'}")
+        src_i = src_i + 1;
+      }
+    end
+  }
 
   book_list << {"name"=>name, "dir"=>book_dir, "last"=>last_index}
 }
